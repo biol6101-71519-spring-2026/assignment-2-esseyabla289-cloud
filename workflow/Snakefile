@@ -1,1 +1,120 @@
-c
+configfile: "../config/config.yaml"
+
+sample = config["samples"]
+results = config["results"]
+reference = config["reference_genome"]
+
+
+rule all:
+    input:
+        #this rule all is for any final outputs that come out from the individual rules.
+        # 1: fastqc files.
+        expand("../results/qc/fastqc/{sample}_R1_fastqc.html",
+                sample=sample),
+        expand("../results/qc/fastqc/{sample}_R2_fastqc.html",
+                sample=sample),
+        
+        # 2: multiqc final file.
+         "../results/qc/multiqc_report.html",
+
+
+        #3 : sorted bam file
+        expand("../results/mapped/{sample}.sorted.bam",
+                sample=sample),
+
+        #4: indexed sorted bam file
+        expand("../results/mapped/{sample}.sorted.bam.bai",
+                sample=sample),
+        
+        #5: statistics file
+        expand("../results/stats/{sample}.flagstat.txt",
+                sample=sample)
+
+#fastqc - fastqc is used for running a quality control check on the raw fastq sequences
+rule eaa_qc:
+    input:
+        "../data/fastq/{sample}_R1.fastq.gz",
+        "../data/fastq/{sample}_R2.fastq.gz",
+    output:
+        "../results/qc/fastqc/{sample}_R1_fastqc.html",
+        "../results/qc/fastqc/{sample}_R2_fastqc.html",
+    shell:
+        "fastqc {input} -o ../results/qc/fastqc/"
+
+#multiqc - multiqc is used for summarizing the quality control check results from fastqc into a single report
+rule eaa_multi_qc:       
+    input:
+        "../results/qc/fastqc/ecoli_k12_R1_fastqc.html",
+        "../results/qc/fastqc/ecoli_k12_R2_fastqc.html",
+    output:
+         "../results/qc/multiqc_report.html"
+    shell:
+         "multiqc ../results/qc/fastqc -o ../results/qc/"
+
+#indexing reference genome - bowtie2-build can used for indexing the reference genome to prepare it for mapping
+rule eaa_index:
+    input:
+        "../data/reference/ecoli_K12.fa"
+    output:
+        "../results/reference/ecoli_k12_index"
+    shell:
+        "bowtie2-build {input} {output}"
+
+#mapping reads to reference genome - bowtie2 can be used for mapping the raw fastq sequences to the indexed reference genome
+rule eaa_map:
+    input:
+        r1="../data/fastq/{sample}_R1.fastq.gz",
+        r2="../data/fastq/{sample}_R2.fastq.gz",
+        #index="../results/reference/ecoli_k12_index.1.bt2"
+    output:
+        "../results/mapped/{sample}.sam"
+    shell:
+        "bowtie2 -x ../data/reference/ecoli_K12.fa -1 {input.r1} -2 {input.r2} -p 8 -S {output}"
+
+#converting sam to bam - samtools view can be used for converting the sam file generated from mapping to a bam file 
+#which is a more compact format for storing mapped reads       
+rule eaa_sam_to_bam:
+    input:
+        expand("../results/mapped/{sample}.sam",
+                sample=sample)
+    output:
+        expand("../results/mapped/{sample}.bam",
+                sample=sample)
+    shell:
+        "samtools view -bS {input} > {output}"
+
+#sorting bam file - samtools sort can be used for sorting the bam file 
+#based on the genomic coordinates which is important for downstream analysis
+rule eaa_sort_bam:
+    input:
+        expand("../results/mapped/{sample}.bam",
+                sample=sample)
+    output:
+        expand("../results/mapped/{sample}.sorted.bam",
+                sample=sample)
+    shell:
+        "samtools sort {input} -o {output}"
+
+#indexing sorted bam file - samtools index can be used for indexing the sorted bam file
+#which allows for fast retrieval of reads mapped to specific genomic regions during downstream analysis
+rule eaa_index_sort_bam:
+    input:
+        expand("../results/mapped/{sample}.sorted.bam",
+                sample=sample)
+    output:
+        expand("../results/mapped/{sample}.sorted.bam.bai",
+                sample=sample)
+    shell:
+        "samtools index {input} {output}"
+
+#mapping statistics - samtools flagstat can be used for generating statistics 
+#about the mapped reads in the sorted bam file
+rule eaa_map_stat:
+    input:
+        expand("../results/mapped/{sample}.sorted.bam",
+                sample=sample)
+    output:
+        expand("../results/stats/{sample}.flagstat.txt",
+                sample=sample)
+    shell:
+        "samtools flagstat {input} > {output}"                                

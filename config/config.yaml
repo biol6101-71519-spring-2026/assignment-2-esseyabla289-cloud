@@ -1,0 +1,10 @@
+samples:
+ - ecoli_k12
+
+ecoli_k12
+data_directory: "../data/fastq"
+results: ../results
+reference_genome: ../data/reference/ecoli_K12.fa
+index_genome: ../results/reference/ecoli_k12_index
+ 
+#used only samples as wildcard 
